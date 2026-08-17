@@ -1,7 +1,7 @@
-# planview (working name)
+# mdpane
 
-A live terminal markdown preview pane for AI coding agents: watches the plan/spec/README files your agent keeps rewriting, re-renders them styled on every write, highlights what changed, and can auto-open as a split beside Claude Code.
+A live terminal markdown pane for AI coding agents. Watches the plans, specs, and READMEs your agent keeps rewriting, re-renders them styled on every write, highlights what changed, and auto-follows the most recently written file. One Go binary, agent-agnostic: works with Claude Code, OpenCode, or anything that writes markdown.
 
-Status: research + spec in progress.
+Status: spec complete (see SPEC.md), build starting.
 
 MIT.
