@@ -156,3 +156,36 @@ func TestMaxDepthLimitsRecursion(t *testing.T) {
 		t.Fatalf("watched %d dirs, depth cap should hold it to <=3", got)
 	}
 }
+
+func TestShallowWatchTopLevelOnly(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	w, err := New(nil, Options{Debounce: 30 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+	if err := w.AddDirShallow(dir); err != nil {
+		t.Fatal(err)
+	}
+	// Top-level write: detected.
+	top := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(top, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ev := collectOne(t, w, 5*time.Second)
+	if ev.Path != top {
+		t.Fatalf("got %q want %q", ev.Path, top)
+	}
+	// Nested write: NOT detected (shallow).
+	if err := os.WriteFile(filepath.Join(dir, "sub", "deep.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev := <-w.Events():
+		t.Fatalf("shallow watch caught nested file: %v", ev)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
