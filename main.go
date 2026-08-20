@@ -28,6 +28,7 @@ import (
 var version = "dev" // set by goreleaser
 
 func main() {
+	raiseFdLimit()
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "mdpane:", err)
 		os.Exit(1)

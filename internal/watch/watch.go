@@ -43,6 +43,13 @@ type Options struct {
 	Match     func(path string) bool // default IsMarkdown
 	Debounce  time.Duration          // default 150ms
 	Ignores   map[string]bool        // default DefaultIgnores
+	// MaxDirs caps watched directories (default 2048). On macOS each
+	// watched dir costs a kqueue file descriptor, so an unbounded
+	// recursive walk of a big tree exhausts the fd limit and can kill
+	// the process. Beyond the cap, deeper dirs are simply not watched.
+	MaxDirs int
+	// MaxDepth caps recursion depth below each root (default 8).
+	MaxDepth int
 }
 
 type Watcher struct {
@@ -50,9 +57,17 @@ type Watcher struct {
 	opts   Options
 	events chan Event
 
-	mu     sync.Mutex
-	timers map[string]*time.Timer
-	closed bool
+	mu      sync.Mutex
+	timers  map[string]*time.Timer
+	watched int
+	closed  bool
+}
+
+// Watched reports how many directories are being watched.
+func (w *Watcher) Watched() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.watched
 }
 
 func New(dirs []string, opts Options) (*Watcher, error) {
@@ -64,6 +79,12 @@ func New(dirs []string, opts Options) (*Watcher, error) {
 	}
 	if opts.Ignores == nil {
 		opts.Ignores = DefaultIgnores
+	}
+	if opts.MaxDirs <= 0 {
+		opts.MaxDirs = 2048
+	}
+	if opts.MaxDepth <= 0 {
+		opts.MaxDepth = 8
 	}
 	fs, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -88,7 +109,8 @@ func New(dirs []string, opts Options) (*Watcher, error) {
 // Events delivers debounced change notifications.
 func (w *Watcher) Events() <-chan Event { return w.events }
 
-// AddDir starts watching a directory (recursively if configured).
+// AddDir starts watching a directory (recursively if configured), within
+// the MaxDirs / MaxDepth budgets.
 func (w *Watcher) AddDir(dir string) error {
 	dir = filepath.Clean(dir)
 	info, err := os.Stat(dir)
@@ -99,8 +121,9 @@ func (w *Watcher) AddDir(dir string) error {
 		return err
 	}
 	if !w.opts.Recursive {
-		return w.fs.Add(dir)
+		return w.add(dir)
 	}
+	rootDepth := strings.Count(dir, string(filepath.Separator))
 	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil // unreadable subtree: skip, don't fail the watch
@@ -111,9 +134,25 @@ func (w *Watcher) AddDir(dir string) error {
 		if w.opts.Ignores[d.Name()] || (strings.HasPrefix(d.Name(), ".") && path != dir) {
 			return filepath.SkipDir
 		}
-		_ = w.fs.Add(path)
+		if strings.Count(path, string(filepath.Separator))-rootDepth >= w.opts.MaxDepth {
+			return filepath.SkipDir
+		}
+		if w.Watched() >= w.opts.MaxDirs {
+			return filepath.SkipAll
+		}
+		_ = w.add(path)
 		return nil
 	})
+}
+
+func (w *Watcher) add(dir string) error {
+	if err := w.fs.Add(dir); err != nil {
+		return err
+	}
+	w.mu.Lock()
+	w.watched++
+	w.mu.Unlock()
+	return nil
 }
 
 func (w *Watcher) loop() {

@@ -123,3 +123,36 @@ func TestIgnoredDirsSkipped(t *testing.T) {
 	case <-time.After(300 * time.Millisecond):
 	}
 }
+
+func TestMaxDirsCapsWatchCount(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 30; i++ {
+		if err := os.MkdirAll(filepath.Join(dir, "sub", "d"+string(rune('a'+i%26))+string(rune('a'+i/26))), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w, err := New([]string{dir}, Options{Recursive: true, MaxDirs: 10, Debounce: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if got := w.Watched(); got > 10 {
+		t.Fatalf("watched %d dirs, cap is 10", got)
+	}
+}
+
+func TestMaxDepthLimitsRecursion(t *testing.T) {
+	dir := t.TempDir()
+	deep := filepath.Join(dir, "a", "b", "c", "d", "e", "f")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	w, err := New([]string{dir}, Options{Recursive: true, MaxDepth: 2, Debounce: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if got := w.Watched(); got > 3 {
+		t.Fatalf("watched %d dirs, depth cap should hold it to <=3", got)
+	}
+}
