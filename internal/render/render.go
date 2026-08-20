@@ -86,7 +86,7 @@ func (r *Renderer) Render(markdown string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.style == "mdpane" {
-		out, err := r.tr.Render(githubRules(markdown))
+		out, err := r.tr.Render(githubRules(renderMermaidBlocks(markdown)))
 		if err != nil {
 			return "", err
 		}
