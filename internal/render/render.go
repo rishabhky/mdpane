@@ -86,7 +86,11 @@ func (r *Renderer) Render(markdown string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.style == "mdpane" {
-		markdown = githubRules(markdown)
+		out, err := r.tr.Render(githubRules(markdown))
+		if err != nil {
+			return "", err
+		}
+		return spaceListItems(out), nil
 	}
 	return r.tr.Render(markdown)
 }

@@ -1,6 +1,7 @@
 package render
 
 import (
+	"regexp"
 	"strings"
 
 	"charm.land/glamour/v2/ansi"
@@ -94,8 +95,10 @@ func mdpaneStyle(width int) ansi.StyleConfig {
 	return cfg
 }
 
-// githubRules inserts a horizontal rule after every H1/H2 heading (outside
-// fenced code blocks), reproducing GitHub's heading border-bottom.
+// githubRules preprocesses markdown for terminal legibility (outside
+// fenced code blocks):
+//
+//   - a horizontal rule after every H1/H2 (GitHub's heading border-bottom)
 func githubRules(markdown string) string {
 	lines := strings.Split(markdown, "\n")
 	out := make([]string, 0, len(lines)+8)
@@ -119,6 +122,35 @@ func githubRules(markdown string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// renderedItemRe matches the start of a rendered list item: glamour emits
+// "• " for bullets and "N. " for ordered items. Wrapped continuation
+// lines never start with these, so item boundaries are unambiguous in the
+// rendered output.
+var renderedItemRe = regexp.MustCompile(`^\s*(•|\d{1,3}\.)\s`)
+
+// spaceListItems adds a blank line before each rendered list item that
+// directly follows another non-blank line. Terminals have no line-height;
+// glamour renders all lists tight (source looseness is ignored), so
+// without this, wrapped bullets fuse into an unreadable block. Applied to
+// rendered output, where item boundaries are unambiguous.
+func spaceListItems(rendered string) string {
+	lines := strings.Split(rendered, "\n")
+	out := make([]string, 0, len(lines)+16)
+	for _, line := range lines {
+		plain := stripANSI(line)
+		if renderedItemRe.MatchString(plain) &&
+			len(out) > 0 && strings.TrimSpace(stripANSI(out[len(out)-1])) != "" {
+			out = append(out, "")
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;:]*m|\x1b\][^\x1b\x07]*(\x07|\x1b\\)`)
+
+func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
 func isH1orH2(line string) bool {
 	if strings.HasPrefix(line, "# ") || line == "#" {

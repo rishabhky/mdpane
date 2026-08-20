@@ -105,3 +105,30 @@ func TestGithubRulesPreprocessor(t *testing.T) {
 		t.Fatalf("unexpected rule count in:\n%s", out)
 	}
 }
+
+func TestListItemsAreSpaced(t *testing.T) {
+	r, err := New("mdpane", 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := r.Render("- alpha item\n- beta item\n- gamma item\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(ansi.Strip(out), "\n")
+	var itemIdx []int
+	for i, l := range lines {
+		if strings.Contains(l, "•") {
+			itemIdx = append(itemIdx, i)
+		}
+	}
+	if len(itemIdx) != 3 {
+		t.Fatalf("want 3 items, got %d:\n%s", len(itemIdx), ansi.Strip(out))
+	}
+	for k := 1; k < len(itemIdx); k++ {
+		gap := itemIdx[k] - itemIdx[k-1]
+		if gap < 2 {
+			t.Fatalf("items %d and %d are adjacent (no blank between):\n%s", k-1, k, ansi.Strip(out))
+		}
+	}
+}
