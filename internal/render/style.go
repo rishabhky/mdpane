@@ -7,66 +7,80 @@ import (
 	"charm.land/glamour/v2/styles"
 )
 
-// mdpaneStyle is the default look: GitHub-flavored document rendering
-// adapted for the terminal. Headings are bold bright text (no literal "#"
-// markers, no background pills), and H1/H2 get a dim full-width rule
-// beneath them — the terminal translation of GitHub's border-bottom.
+// GitHub dark palette, taken verbatim from github-markdown-css 5.3.0
+// (the stylesheet GitHub itself ships; also what web markdown viewers use).
+const (
+	ghText       = "#e6edf3" // body + headings
+	ghMuted      = "#7d8590" // h6, blockquote text
+	ghLink       = "#2f81f7" // links, no underline
+	ghBorder     = "#30363d" // blockquote bar; used for rules too (see below)
+	ghCodeChipBg = "#343941" // inline code: rgba(110,118,129,.4) over #0d1117
+)
+
+// mdpaneStyle is the default look: GitHub dark markdown rendering,
+// translated to the terminal. Headings are weight-only (no "#" markers, no
+// pills); H1/H2 carry a full-width hairline rule (GitHub's border-bottom).
 //
-// The rule width must match the render width, and glamour styles are
-// static strings, so the style is rebuilt alongside the renderer whenever
-// the width changes.
+// One deliberate deviation: GitHub's rule color #21262d is designed for a
+// #0d1117 page background and disappears on many terminal backgrounds, so
+// rules use the one-step-up border color #30363d.
+//
+// Styles are static strings, so the config is rebuilt with the renderer
+// whenever the width changes (the rule must span the content width).
 func mdpaneStyle(width int) ansi.StyleConfig {
 	cfg := styles.DarkStyleConfig
 
 	empty := ""
 	boolTrue := true
-	boolFalse := false
-	bright := "255"
-	body := "252"
-	dim := "246"
-	ruleColor := "240"
+	text := ghText
+	muted := ghMuted
+	link := ghLink
+	border := ghBorder
+	chipBg := ghCodeChipBg
 
-	// Headings: GitHub renders them as bold foreground text, largest on
-	// top, with no decoration besides the H1/H2 rule (added via the
-	// preprocessor + hr style below).
-	cfg.Heading.Color = &bright
-	cfg.Heading.Bold = &boolTrue
+	cfg.Document.Color = &text
 
-	cfg.H1.Prefix = empty
-	cfg.H1.Suffix = empty
-	cfg.H1.Color = &bright
-	cfg.H1.BackgroundColor = nil // no pill
-	cfg.H1.Bold = &boolTrue
-
-	cfg.H2.Prefix = empty
-	cfg.H2.Color = &bright
-	cfg.H2.Bold = &boolTrue
-	cfg.H2.Underline = nil
-
-	cfg.H3.Prefix = empty
-	cfg.H3.Color = &bright
-	cfg.H3.Bold = &boolTrue
-
-	cfg.H4.Prefix = empty
-	cfg.H4.Color = &body
-	cfg.H4.Bold = &boolTrue
-
-	cfg.H5.Prefix = empty
-	cfg.H5.Color = &dim
-	cfg.H5.Bold = &boolTrue
-
+	// Headings: font-weight 600, default foreground. Hierarchy in a
+	// browser is font size; in a terminal it's the H1/H2 rules plus
+	// H6's muted color, exactly as far as GitHub's own palette goes.
+	for _, h := range []*ansi.StyleBlock{
+		&cfg.Heading, &cfg.H1, &cfg.H2, &cfg.H3, &cfg.H4, &cfg.H5,
+	} {
+		h.Prefix = empty
+		h.Suffix = empty
+		h.Color = &text
+		h.BackgroundColor = nil
+		h.Bold = &boolTrue
+		h.Underline = nil
+	}
 	cfg.H6.Prefix = empty
-	cfg.H6.Color = &dim
-	cfg.H6.Bold = &boolFalse
+	cfg.H6.Color = &muted
+	cfg.H6.Bold = &boolTrue
 
-	// Full-width dim rule; also used under H1/H2 via the preprocessor.
-	// The document style carries a 2-column margin on each side, so the
-	// rule must be narrower than the wrap width or it wraps onto a
-	// second line.
+	// Links: GitHub blue, no underline (GitHub underlines on hover only).
+	boolFalse := false
+	cfg.Link.Color = &link
+	cfg.Link.Underline = &boolFalse
+	cfg.LinkText.Color = &link
+	cfg.LinkText.Underline = &boolFalse
+
+	// Inline code: GitHub renders a neutral chip, not colored text.
+	cfg.Code.Color = &text
+	cfg.Code.BackgroundColor = &chipBg
+
+	// Code blocks: chroma's github-dark theme (same colors highlight.js
+	// produces on github.com).
+	cfg.CodeBlock.Theme = "github-dark"
+
+	// Blockquote: muted text behind a border bar.
+	cfg.BlockQuote.Color = &muted
+
+	// Horizontal rule doubles as the H1/H2 border-bottom (injected by the
+	// preprocessor). Width minus the document's 2-column margins.
+	cfg.HorizontalRule.Color = &border
 	if ruleWidth := width - 4; ruleWidth >= 10 {
 		cfg.HorizontalRule.Format = "\n" + strings.Repeat("─", ruleWidth) + "\n"
 	}
-	cfg.HorizontalRule.Color = &ruleColor
 
 	return cfg
 }
