@@ -29,6 +29,21 @@ homebrew_casks:
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/mdpane"]
           end
 
+scoops:
+  - repository:
+      owner: rishabhky
+      name: scoop-bucket
+    homepage: https://github.com/rishabhky/mdpane
+    description: Live terminal markdown pane for AI coding agents
+    license: MIT
+
+nfpms:
+  - formats: [deb, rpm]
+    maintainer: Rishabh Kumar Yadav <rishabhky23@gmail.com>
+    homepage: https://github.com/rishabhky/mdpane
+    description: Live terminal markdown pane for AI coding agents
+    license: MIT
+
 changelog:
   sort: asc
   filters:

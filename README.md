@@ -27,9 +27,13 @@ every save. mdpane is a small Go binary that does this properly:
 ## Install
 
 ```sh
+brew install rishabhky/tap/mdpane          # macOS / Linux
 go install github.com/rishabhky/mdpane@latest
-# or grab a binary from Releases; brew tap coming with the first release
+scoop bucket add rishabhky https://github.com/rishabhky/scoop-bucket && scoop install mdpane  # Windows
 ```
+
+Prebuilt binaries (plus .deb/.rpm) are on the
+[Releases page](https://github.com/rishabhky/mdpane/releases).
 
 ## Use
 
