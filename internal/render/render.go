@@ -16,9 +16,9 @@ const (
 	// as styled text without literal "##" markers. Any glamour standard
 	// style name (dark, light, notty, ...) or a JSON path also works.
 	DefaultStyle = "mdpane"
-	// MaxWidth caps the rendered line width: prose wider than ~120 columns
-	// is harder to read, not easier.
-	MaxWidth = 120
+	// MaxWidth caps the text measure. GitHub caps .markdown-body around
+	// ~90 characters of prose; wide panes get whitespace, not longer lines.
+	MaxWidth = 96
 	MinWidth = 20
 )
 

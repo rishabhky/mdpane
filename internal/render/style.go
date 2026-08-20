@@ -39,6 +39,10 @@ func mdpaneStyle(width int) ansi.StyleConfig {
 	chipBg := ghCodeChipBg
 
 	cfg.Document.Color = &text
+	// Page padding: GitHub gives .markdown-body generous side padding;
+	// margin 2 reads cramped next to the reference.
+	margin := uint(3)
+	cfg.Document.Margin = &margin
 
 	// Headings: font-weight 600, default foreground. Hierarchy in a
 	// browser is font size; in a terminal it's the H1/H2 rules plus
@@ -53,6 +57,9 @@ func mdpaneStyle(width int) ansi.StyleConfig {
 		h.Bold = &boolTrue
 		h.Underline = nil
 	}
+	// GitHub headings carry more space above than below (margin-top
+	// 24px): an extra blank line above each heading separates sections.
+	cfg.Heading.BlockPrefix = "\n"
 	cfg.H6.Prefix = empty
 	cfg.H6.Color = &muted
 	cfg.H6.Bold = &boolTrue
@@ -76,10 +83,12 @@ func mdpaneStyle(width int) ansi.StyleConfig {
 	cfg.BlockQuote.Color = &muted
 
 	// Horizontal rule doubles as the H1/H2 border-bottom (injected by the
-	// preprocessor). Width minus the document's 2-column margins.
+	// preprocessor). No leading newline: GitHub's rule hugs its heading
+	// (padding-bottom .3em), it doesn't float a line below it. Width
+	// minus the document margins on both sides.
 	cfg.HorizontalRule.Color = &border
-	if ruleWidth := width - 4; ruleWidth >= 10 {
-		cfg.HorizontalRule.Format = "\n" + strings.Repeat("─", ruleWidth) + "\n"
+	if ruleWidth := width - 2*int(margin); ruleWidth >= 10 {
+		cfg.HorizontalRule.Format = strings.Repeat("─", ruleWidth) + "\n"
 	}
 
 	return cfg
@@ -101,8 +110,11 @@ func githubRules(markdown string) string {
 		if inFence {
 			continue
 		}
+		// "---" directly after an ATX heading is a thematic break (the
+		// heading is already its own block), so no blank line is needed
+		// and the rule renders tight beneath the heading text.
 		if isH1orH2(trimmed) && !nextIsRule(lines, i) {
-			out = append(out, "", "---")
+			out = append(out, "---")
 		}
 	}
 	return strings.Join(out, "\n")
