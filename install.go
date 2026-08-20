@@ -78,7 +78,9 @@ func installClaudeCode() error {
 		return err
 	}
 	fmt.Printf("installed Claude Code hooks in %s\n", path)
-	fmt.Println("next markdown Write/Edit (including plan mode) will open in the mdpane pane")
+	fmt.Println("IMPORTANT: hooks load at session start — running Claude Code sessions")
+	fmt.Println("won't fire them. Restart sessions (or open new ones) to activate.")
+	fmt.Println("Then any markdown Write/Edit, including plan mode, opens in the pane.")
 	return nil
 }
 

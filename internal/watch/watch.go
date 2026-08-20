@@ -145,6 +145,17 @@ func (w *Watcher) AddDir(dir string) error {
 	})
 }
 
+// AddDirShallow watches a single directory level, regardless of the
+// Recursive option — for high-churn trees like ~/Downloads where only
+// top-level files matter.
+func (w *Watcher) AddDirShallow(dir string) error {
+	dir = filepath.Clean(dir)
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return err
+	}
+	return w.add(dir)
+}
+
 func (w *Watcher) add(dir string) error {
 	if err := w.fs.Add(dir); err != nil {
 		return err

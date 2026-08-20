@@ -89,8 +89,25 @@ func defaultDirs() []string {
 	return dirs
 }
 
-func startViewer(cfg ui.Config, dirs []string, recursive bool) error {
-	cfg.Dirs = dirs
+// shallowDefaultDirs are watched one level deep only: agents asked to
+// "save me a doc" routinely drop it in Downloads or on the Desktop.
+func shallowDefaultDirs() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, name := range []string{"Downloads", "Desktop"} {
+		d := filepath.Join(home, name)
+		if info, err := os.Stat(d); err == nil && info.IsDir() {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func startViewer(cfg ui.Config, dirs []string, shallow []string, recursive bool) error {
+	cfg.Dirs = append(append([]string{}, dirs...), shallow...)
 	r, err := render.New(cfg.Style, 100)
 	if err != nil {
 		return err
@@ -100,6 +117,9 @@ func startViewer(cfg ui.Config, dirs []string, recursive bool) error {
 		return err
 	}
 	defer w.Close()
+	for _, d := range shallow {
+		_ = w.AddDirShallow(d)
+	}
 	m := ui.NewModel(cfg, r, w)
 	_, err = tea.NewProgram(m).Run()
 	return err
@@ -125,6 +145,7 @@ func cmdView(args []string) error {
 	return startViewer(
 		ui.Config{InitialFile: file, Style: *style},
 		[]string{filepath.Dir(file)},
+		nil,
 		false,
 	)
 }
@@ -147,9 +168,11 @@ func cmdFollow(args []string) error {
 		}
 		dirs[i] = abs
 	}
+	shallow := shallowDefaultDirs()
 	return startViewer(
-		ui.Config{FollowNewest: true, Style: *style, InitialFile: freshestMarkdown(dirs)},
+		ui.Config{FollowNewest: true, Style: *style, InitialFile: freshestMarkdown(dirs, shallow)},
 		dirs,
+		shallow,
 		true,
 	)
 }
@@ -183,9 +206,10 @@ func cmdAttach(args []string) error {
 	)
 
 	dirs := defaultDirs()
+	shallow := shallowDefaultDirs()
 	initial := *openFile
 	if initial == "" {
-		initial = freshestMarkdown(dirs)
+		initial = freshestMarkdown(dirs, shallow)
 	} else if abs, err := filepath.Abs(initial); err == nil {
 		initial = abs
 		dirs = append(dirs, filepath.Dir(abs))
@@ -206,6 +230,7 @@ func cmdAttach(args []string) error {
 			Quit:         quit,
 		},
 		dirs,
+		shallow,
 		true,
 	)
 	select {
@@ -260,8 +285,11 @@ func cmdOpen(args []string) error {
 // showing a waiting screen. Live follow events are unaffected.
 const freshWindow = 15 * time.Minute
 
-func freshestMarkdown(dirs []string) string {
+func freshestMarkdown(dirs, shallow []string) string {
 	path, mod := newestMarkdown(dirs)
+	if p2, m2 := newestMarkdownShallow(shallow); m2 > mod {
+		path, mod = p2, m2
+	}
 	if path == "" || time.Since(time.Unix(0, mod)) > freshWindow {
 		return ""
 	}
@@ -292,6 +320,29 @@ func newestMarkdown(dirs []string) (string, int64) {
 			}
 			return nil
 		})
+	}
+	return newest, newestMod
+}
+
+// newestMarkdownShallow scans only the top level of each directory.
+func newestMarkdownShallow(dirs []string) (string, int64) {
+	var newest string
+	var newestMod int64
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !watch.IsMarkdown(e.Name()) {
+				continue
+			}
+			if info, err := e.Info(); err == nil {
+				if mt := info.ModTime().UnixNano(); mt > newestMod {
+					newestMod, newest = mt, filepath.Join(dir, e.Name())
+				}
+			}
+		}
 	}
 	return newest, newestMod
 }
