@@ -51,3 +51,23 @@ func TestDeterministic(t *testing.T) {
 		t.Fatal("render is not deterministic")
 	}
 }
+
+func TestMdpaneStyleHidesHeadingMarkers(t *testing.T) {
+	r, err := New("mdpane", 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := r.Render("# Title\n\n## Section\n\n### Sub\n\nbody text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := ansi.Strip(out)
+	if strings.Contains(plain, "##") {
+		t.Fatalf("mdpane style leaked heading markers:\n%s", plain)
+	}
+	for _, want := range []string{"Title", "Section", "Sub"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("missing heading text %q", want)
+		}
+	}
+}

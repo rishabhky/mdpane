@@ -106,7 +106,7 @@ func startViewer(cfg ui.Config, dirs []string, recursive bool) error {
 // cmdView: mdpane FILE — single-file mode.
 func cmdView(args []string) error {
 	fs := flag.NewFlagSet("view", flag.ContinueOnError)
-	style := fs.String("style", "dark", "glamour style (dark, light, notty, or a JSON path)")
+	style := fs.String("style", render.DefaultStyle, "style: mdpane (default), dark, light, notty, or a JSON path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func cmdView(args []string) error {
 // cmdFollow: mdpane follow [DIR...] — newest-markdown mode, no socket.
 func cmdFollow(args []string) error {
 	fs := flag.NewFlagSet("follow", flag.ContinueOnError)
-	style := fs.String("style", "dark", "glamour style")
+	style := fs.String("style", render.DefaultStyle, "style")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func cmdFollow(args []string) error {
 // cmdAttach: pane mode — viewer + socket server, retargetable via `open`.
 func cmdAttach(args []string) error {
 	fs := flag.NewFlagSet("attach", flag.ContinueOnError)
-	style := fs.String("style", "dark", "glamour style")
+	style := fs.String("style", render.DefaultStyle, "style")
 	openFile := fs.String("open", "", "file to show initially")
 	if err := fs.Parse(args); err != nil {
 		return err

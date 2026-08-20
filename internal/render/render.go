@@ -12,7 +12,10 @@ import (
 )
 
 const (
-	DefaultStyle = "dark"
+	// DefaultStyle is mdpane's own look: dark palette, headings rendered
+	// as styled text without literal "##" markers. Any glamour standard
+	// style name (dark, light, notty, ...) or a JSON path also works.
+	DefaultStyle = "mdpane"
 	// MaxWidth caps the rendered line width: prose wider than ~120 columns
 	// is harder to read, not easier.
 	MaxWidth = 120
@@ -55,8 +58,12 @@ func (r *Renderer) SetWidth(w int) error {
 	if r.tr != nil && w == r.width {
 		return nil
 	}
+	styleOpt := glamour.WithStandardStyle(r.style)
+	if r.style == "mdpane" {
+		styleOpt = glamour.WithStyles(mdpaneStyle())
+	}
 	tr, err := glamour.NewTermRenderer(
-		glamour.WithStandardStyle(r.style),
+		styleOpt,
 		glamour.WithWordWrap(w),
 		glamour.WithTableWrap(true),
 		glamour.WithEmoji(),
