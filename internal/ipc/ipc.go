@@ -21,7 +21,7 @@ import (
 
 // Msg is the wire format (ndjson, one message per connection).
 type Msg struct {
-	Cmd  string `json:"cmd"`            // "open" | "ping"
+	Cmd  string `json:"cmd"`            // "open" | "ping" | "shutdown"
 	Path string `json:"path,omitempty"` // absolute path for "open"
 }
 
@@ -81,8 +81,9 @@ func Listen() (*Server, error) {
 	return &Server{ln: ln, lock: lk}, nil
 }
 
-// Serve accepts messages until Close; onOpen is called for "open" commands.
-func (s *Server) Serve(onOpen func(path string)) {
+// Serve accepts messages until Close. onOpen handles "open"; onShutdown
+// (optional) handles "shutdown", sent by a newer viewer taking over.
+func (s *Server) Serve(onOpen func(path string), onShutdown func()) {
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
@@ -106,10 +107,37 @@ func (s *Server) Serve(onOpen func(path string)) {
 				}
 				onOpen(m.Path)
 				writeReply(c, reply{OK: true})
+			case "shutdown":
+				writeReply(c, reply{OK: true})
+				if onShutdown != nil {
+					onShutdown()
+				}
 			default:
 				writeReply(c, reply{OK: false, Error: "unknown cmd " + m.Cmd})
 			}
 		}(conn)
+	}
+}
+
+// TakeoverListen claims the socket, evicting a live viewer if one exists:
+// the newest `mdpane attach` wins, so the pane lives wherever the user
+// last asked for it. The old viewer exits with a note.
+func TakeoverListen() (*Server, error) {
+	srv, err := Listen()
+	if err == nil || err != ErrBusy {
+		return srv, err
+	}
+	_ = Send(Msg{Cmd: "shutdown"}) // ask the incumbent to leave
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		srv, err = Listen()
+		if err == nil || err != ErrBusy {
+			return srv, err
+		}
+		if time.Now().After(deadline) {
+			return nil, ErrBusy
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

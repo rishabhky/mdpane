@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -161,17 +162,24 @@ func cmdAttach(args []string) error {
 		return err
 	}
 
-	srv, err := ipc.Listen()
+	// Newest attach wins: if a pane is already running elsewhere, it is
+	// asked to exit and this one becomes the pane.
+	srv, err := ipc.TakeoverListen()
 	if err != nil {
 		if err == ipc.ErrBusy {
-			return fmt.Errorf("another mdpane pane is already attached (retarget it with 'mdpane open FILE')")
+			return fmt.Errorf("could not take over from the running mdpane pane; close it and retry")
 		}
 		return err
 	}
 	defer srv.Close()
 
 	opens := make(chan string, 8)
-	go srv.Serve(func(path string) { opens <- path })
+	quit := make(chan struct{})
+	var quitOnce sync.Once
+	go srv.Serve(
+		func(path string) { opens <- path },
+		func() { quitOnce.Do(func() { close(quit) }) },
+	)
 
 	dirs := defaultDirs()
 	initial := *openFile
@@ -187,17 +195,24 @@ func cmdAttach(args []string) error {
 			dirs[i] = abs
 		}
 	}
-	return startViewer(
+	err = startViewer(
 		ui.Config{
 			InitialFile:  initial,
 			FollowNewest: true,
 			Style:        *style,
 			SocketNote:   "attached",
 			Opens:        opens,
+			Quit:         quit,
 		},
 		dirs,
 		true,
 	)
+	select {
+	case <-quit:
+		fmt.Println("mdpane: pane moved to another terminal ('mdpane attach' ran elsewhere)")
+	default:
+	}
+	return err
 }
 
 // cmdOpen: idempotent client — retarget the pane, spawning one if needed.

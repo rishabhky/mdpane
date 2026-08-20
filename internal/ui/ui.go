@@ -43,13 +43,15 @@ type Config struct {
 	Dirs         []string // watched directories
 	FollowNewest bool     // switch to the most recently written markdown file
 	Style        string
-	SocketNote   string        // status hint, e.g. "attached" or "no socket"
-	Opens        <-chan string // socket open requests (may be nil)
+	SocketNote   string          // status hint, e.g. "attached" or "no socket"
+	Opens        <-chan string   // socket open requests (may be nil)
+	Quit         <-chan struct{} // closed when another viewer takes over (may be nil)
 }
 
 type (
 	fileEventMsg string
 	openMsg      string
+	takeoverMsg  struct{}
 	tickMsg      time.Time
 )
 
@@ -113,6 +115,13 @@ func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.waitWatch()}
 	if m.cfg.Opens != nil {
 		cmds = append(cmds, m.waitOpen())
+	}
+	if m.cfg.Quit != nil {
+		quit := m.cfg.Quit
+		cmds = append(cmds, func() tea.Msg {
+			<-quit
+			return takeoverMsg{}
+		})
 	}
 	return tea.Batch(cmds...)
 }
@@ -178,6 +187,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.switchTo(path, "→ "+prettyPath(path))
 		}
 		return m, tea.Batch(m.waitWatch(), m.ensureTick())
+
+	case takeoverMsg:
+		return m, tea.Quit
 
 	case openMsg:
 		path := string(msg)

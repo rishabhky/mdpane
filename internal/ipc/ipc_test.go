@@ -27,7 +27,7 @@ func TestOpenRoundTrip(t *testing.T) {
 	defer srv.Close()
 
 	got := make(chan string, 1)
-	go srv.Serve(func(path string) { got <- path })
+	go srv.Serve(func(path string) { got <- path }, nil)
 
 	if err := Send(Msg{Cmd: "open", Path: "/tmp/x.md"}); err != nil {
 		t.Fatal(err)
@@ -82,11 +82,59 @@ func TestSendWithRetryEventuallyConnects(t *testing.T) {
 		if err != nil {
 			return
 		}
-		go srv.Serve(func(string) {})
+		go srv.Serve(func(string) {}, nil)
 		time.Sleep(2 * time.Second)
 		srv.Close()
 	}()
 	if err := SendWithRetry(Msg{Cmd: "ping"}, 5*time.Second); err != nil {
 		t.Fatalf("retry never connected: %v", err)
 	}
+}
+
+func TestTakeoverEvictsIncumbent(t *testing.T) {
+	testSocket(t)
+	old, err := Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	evicted := make(chan struct{})
+	go old.Serve(func(string) {}, func() {
+		// Real flow: the old process's UI quits and the deferred Close
+		// releases the lock. Simulate that.
+		go func() { old.Close(); close(evicted) }()
+	})
+
+	niu, err := TakeoverListen()
+	if err != nil {
+		t.Fatalf("takeover failed: %v", err)
+	}
+	defer niu.Close()
+	select {
+	case <-evicted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("incumbent was never evicted")
+	}
+	// New server must actually work.
+	got := make(chan string, 1)
+	go niu.Serve(func(p string) { got <- p }, nil)
+	if err := Send(Msg{Cmd: "open", Path: "/tmp/z.md"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case p := <-got:
+		if p != "/tmp/z.md" {
+			t.Fatalf("got %q", p)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("new server not serving")
+	}
+}
+
+func TestTakeoverWithNoIncumbentJustListens(t *testing.T) {
+	testSocket(t)
+	srv, err := TakeoverListen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.Close()
 }
