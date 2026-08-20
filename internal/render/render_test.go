@@ -71,3 +71,37 @@ func TestMdpaneStyleHidesHeadingMarkers(t *testing.T) {
 		}
 	}
 }
+
+func TestGithubStyleRulesUnderHeadings(t *testing.T) {
+	r, err := New("mdpane", 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := r.Render("# Title\n\nintro\n\n## Section\n\nbody\n\n### Sub\n\nmore\n\n```\n# not a heading\n```\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := ansi.Strip(out)
+	rules := 0
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.Count(strings.TrimSpace(line), "─") >= 10 {
+			rules++
+		}
+	}
+	// Exactly two rule LINES: under H1 and under H2 — none for H3, none
+	// for the fenced pseudo-heading, and no wrapping onto extra lines.
+	if rules != 2 {
+		t.Fatalf("want exactly 2 rule lines, found %d:\n%s", rules, plain)
+	}
+	if strings.Contains(plain, "##") {
+		t.Fatalf("heading markers leaked:\n%s", plain)
+	}
+}
+
+func TestGithubRulesPreprocessor(t *testing.T) {
+	in := "# A\n\n## B\n\n---\n\n### C\n\n```\n# fenced\n```"
+	out := githubRules(in)
+	if strings.Count(out, "---") != 2 { // one injected after A, existing one after B kept, none for C/fenced
+		t.Fatalf("unexpected rule count in:\n%s", out)
+	}
+}

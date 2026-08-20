@@ -60,7 +60,7 @@ func (r *Renderer) SetWidth(w int) error {
 	}
 	styleOpt := glamour.WithStandardStyle(r.style)
 	if r.style == "mdpane" {
-		styleOpt = glamour.WithStyles(mdpaneStyle())
+		styleOpt = glamour.WithStyles(mdpaneStyle(w))
 	}
 	tr, err := glamour.NewTermRenderer(
 		styleOpt,
@@ -85,5 +85,8 @@ func (r *Renderer) Width() int {
 func (r *Renderer) Render(markdown string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.style == "mdpane" {
+		markdown = githubRules(markdown)
+	}
 	return r.tr.Render(markdown)
 }
