@@ -1,0 +1,11 @@
+{
+  "name": "mdpane",
+  "owner": { "name": "Rishabh Kumar Yadav" },
+  "plugins": [
+    {
+      "name": "mdpane",
+      "source": "./integrations/claude-code",
+      "description": "Live markdown preview pane for plans and docs Claude writes."
+    }
+  ]
+}

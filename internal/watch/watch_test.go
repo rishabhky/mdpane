@@ -1,0 +1,125 @@
+package watch
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func collectOne(t *testing.T, w *Watcher, timeout time.Duration) Event {
+	t.Helper()
+	select {
+	case ev := <-w.Events():
+		return ev
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for watch event")
+		return Event{}
+	}
+}
+
+func newTestWatcher(t *testing.T, dir string, recursive bool) *Watcher {
+	t.Helper()
+	w, err := New([]string{dir}, Options{Recursive: recursive, Debounce: 30 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+	return w
+}
+
+func TestDirectWriteDetected(t *testing.T) {
+	dir := t.TempDir()
+	w := newTestWatcher(t, dir, false)
+	path := filepath.Join(dir, "plan.md")
+	if err := os.WriteFile(path, []byte("# hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ev := collectOne(t, w, 5*time.Second)
+	if ev.Path != path {
+		t.Fatalf("got %q, want %q", ev.Path, path)
+	}
+}
+
+func TestAtomicRenameDetected(t *testing.T) {
+	// The way agents and editors actually save: write temp, rename over.
+	dir := t.TempDir()
+	w := newTestWatcher(t, dir, false)
+	tmp := filepath.Join(dir, ".plan.md.tmp-x")
+	final := filepath.Join(dir, "plan.md")
+	if err := os.WriteFile(tmp, []byte("# v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmp, final); err != nil {
+		t.Fatal(err)
+	}
+	ev := collectOne(t, w, 5*time.Second)
+	if ev.Path != final {
+		t.Fatalf("got %q, want %q", ev.Path, final)
+	}
+}
+
+func TestNonMarkdownIgnored(t *testing.T) {
+	dir := t.TempDir()
+	w := newTestWatcher(t, dir, false)
+	if err := os.WriteFile(filepath.Join(dir, "code.go"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev := <-w.Events():
+		t.Fatalf("non-markdown file reported: %v", ev)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+func TestDebounceCoalesces(t *testing.T) {
+	dir := t.TempDir()
+	w := newTestWatcher(t, dir, false)
+	path := filepath.Join(dir, "doc.md")
+	for i := 0; i < 5; i++ {
+		if err := os.WriteFile(path, []byte("v"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	collectOne(t, w, 5*time.Second)
+	select {
+	case <-w.Events():
+		t.Fatal("burst of writes was not coalesced into one event")
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+func TestRecursiveNewSubdir(t *testing.T) {
+	dir := t.TempDir()
+	w := newTestWatcher(t, dir, true)
+	sub := filepath.Join(dir, "docs")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(150 * time.Millisecond) // let the watcher pick up the new dir
+	path := filepath.Join(sub, "spec.md")
+	if err := os.WriteFile(path, []byte("# spec"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ev := collectOne(t, w, 5*time.Second)
+	if ev.Path != path {
+		t.Fatalf("got %q, want %q", ev.Path, path)
+	}
+}
+
+func TestIgnoredDirsSkipped(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "node_modules", "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	w := newTestWatcher(t, dir, true)
+	if err := os.WriteFile(filepath.Join(dir, "node_modules", "pkg", "readme.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev := <-w.Events():
+		t.Fatalf("event from ignored dir: %v", ev)
+	case <-time.After(300 * time.Millisecond):
+	}
+}

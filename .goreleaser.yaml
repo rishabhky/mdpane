@@ -1,0 +1,35 @@
+version: 2
+
+project_name: mdpane
+
+builds:
+  - main: .
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+homebrew_casks:
+  - repository:
+      owner: rishabhky
+      name: homebrew-tap
+    homepage: https://github.com/rishabhky/mdpane
+    description: Live terminal markdown pane for AI coding agents
+    license: MIT
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/mdpane"]
+          end
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^ci:"]

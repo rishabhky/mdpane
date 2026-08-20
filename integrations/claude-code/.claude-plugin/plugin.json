@@ -1,0 +1,7 @@
+{
+  "name": "mdpane",
+  "description": "Live markdown preview pane: plans and docs Claude writes render styled in a side pane, with change highlighting. Requires the mdpane binary (brew install rishabhky/tap/mdpane).",
+  "version": "0.1.0",
+  "author": { "name": "Rishabh Kumar Yadav" },
+  "homepage": "https://github.com/rishabhky/mdpane"
+}

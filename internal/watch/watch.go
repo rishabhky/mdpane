@@ -1,0 +1,190 @@
+// Package watch turns fsnotify into what mdpane actually needs: "tell me,
+// debounced, when a matching file changes under these directories".
+//
+// It always watches directories, never files: agents and editors write via
+// temp-then-rename, which replaces the inode and silently kills a watch on
+// the file path itself (fsnotify#372). Renames/creates of a matching name
+// count as changes.
+package watch
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
+)
+
+// Event reports that a matching file changed.
+type Event struct {
+	Path string
+}
+
+// DefaultIgnores are directory names never descended into.
+var DefaultIgnores = map[string]bool{
+	".git": true, "node_modules": true, "vendor": true, "dist": true,
+	"target": true, ".venv": true, "__pycache__": true, ".cache": true,
+	".next": true, "build": true,
+}
+
+// IsMarkdown is the default match function.
+func IsMarkdown(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".md", ".markdown", ".mdown":
+		return true
+	}
+	return false
+}
+
+type Options struct {
+	Recursive bool
+	Match     func(path string) bool // default IsMarkdown
+	Debounce  time.Duration          // default 150ms
+	Ignores   map[string]bool        // default DefaultIgnores
+}
+
+type Watcher struct {
+	fs     *fsnotify.Watcher
+	opts   Options
+	events chan Event
+
+	mu     sync.Mutex
+	timers map[string]*time.Timer
+	closed bool
+}
+
+func New(dirs []string, opts Options) (*Watcher, error) {
+	if opts.Match == nil {
+		opts.Match = IsMarkdown
+	}
+	if opts.Debounce <= 0 {
+		opts.Debounce = 150 * time.Millisecond
+	}
+	if opts.Ignores == nil {
+		opts.Ignores = DefaultIgnores
+	}
+	fs, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+	w := &Watcher{
+		fs:     fs,
+		opts:   opts,
+		events: make(chan Event, 64),
+		timers: make(map[string]*time.Timer),
+	}
+	for _, d := range dirs {
+		if err := w.AddDir(d); err != nil {
+			fs.Close()
+			return nil, err
+		}
+	}
+	go w.loop()
+	return w, nil
+}
+
+// Events delivers debounced change notifications.
+func (w *Watcher) Events() <-chan Event { return w.events }
+
+// AddDir starts watching a directory (recursively if configured).
+func (w *Watcher) AddDir(dir string) error {
+	dir = filepath.Clean(dir)
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		if err == nil {
+			return nil
+		}
+		return err
+	}
+	if !w.opts.Recursive {
+		return w.fs.Add(dir)
+	}
+	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // unreadable subtree: skip, don't fail the watch
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		if w.opts.Ignores[d.Name()] || (strings.HasPrefix(d.Name(), ".") && path != dir) {
+			return filepath.SkipDir
+		}
+		_ = w.fs.Add(path)
+		return nil
+	})
+}
+
+func (w *Watcher) loop() {
+	for {
+		select {
+		case ev, ok := <-w.fs.Events:
+			if !ok {
+				return
+			}
+			w.handle(ev)
+		case _, ok := <-w.fs.Errors:
+			if !ok {
+				return
+			}
+			// Watch errors are non-fatal for a preview tool; keep going.
+		}
+	}
+}
+
+func (w *Watcher) handle(ev fsnotify.Event) {
+	if ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+		return
+	}
+	// New directory: extend the watch (agents create docs/ dirs mid-run).
+	if w.opts.Recursive && ev.Op&fsnotify.Create != 0 {
+		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
+			if !w.opts.Ignores[filepath.Base(ev.Name)] {
+				_ = w.AddDir(ev.Name)
+			}
+			return
+		}
+	}
+	if !w.opts.Match(ev.Name) {
+		return
+	}
+	path := filepath.Clean(ev.Name)
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return
+	}
+	if t, ok := w.timers[path]; ok {
+		t.Reset(w.opts.Debounce)
+		return
+	}
+	w.timers[path] = time.AfterFunc(w.opts.Debounce, func() {
+		w.mu.Lock()
+		delete(w.timers, path)
+		closed := w.closed
+		w.mu.Unlock()
+		if closed {
+			return
+		}
+		// Only report files that still exist (rename-away emits too).
+		if info, err := os.Stat(path); err != nil || info.IsDir() {
+			return
+		}
+		select {
+		case w.events <- Event{Path: path}:
+		default: // consumer wedged; dropping is fine for a previewer
+		}
+	})
+}
+
+func (w *Watcher) Close() error {
+	w.mu.Lock()
+	w.closed = true
+	for _, t := range w.timers {
+		t.Stop()
+	}
+	w.mu.Unlock()
+	return w.fs.Close()
+}

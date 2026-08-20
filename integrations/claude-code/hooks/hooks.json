@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "mdpane hook claude-code", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          { "type": "command", "command": "mdpane hook claude-code", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
