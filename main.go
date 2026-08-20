@@ -90,6 +90,7 @@ func defaultDirs() []string {
 }
 
 func startViewer(cfg ui.Config, dirs []string, recursive bool) error {
+	cfg.Dirs = dirs
 	r, err := render.New(cfg.Style, 100)
 	if err != nil {
 		return err
@@ -147,7 +148,7 @@ func cmdFollow(args []string) error {
 		dirs[i] = abs
 	}
 	return startViewer(
-		ui.Config{FollowNewest: true, Style: *style, InitialFile: newestMarkdown(dirs)},
+		ui.Config{FollowNewest: true, Style: *style, InitialFile: freshestMarkdown(dirs)},
 		dirs,
 		true,
 	)
@@ -184,7 +185,7 @@ func cmdAttach(args []string) error {
 	dirs := defaultDirs()
 	initial := *openFile
 	if initial == "" {
-		initial = newestMarkdown(dirs)
+		initial = freshestMarkdown(dirs)
 	} else if abs, err := filepath.Abs(initial); err == nil {
 		initial = abs
 		dirs = append(dirs, filepath.Dir(abs))
@@ -254,7 +255,20 @@ func cmdOpen(args []string) error {
 	return nil
 }
 
-func newestMarkdown(dirs []string) string {
+// freshWindow bounds the initial-file fallback: a file older than this is
+// stale context from some earlier session, and showing it is worse than
+// showing a waiting screen. Live follow events are unaffected.
+const freshWindow = 15 * time.Minute
+
+func freshestMarkdown(dirs []string) string {
+	path, mod := newestMarkdown(dirs)
+	if path == "" || time.Since(time.Unix(0, mod)) > freshWindow {
+		return ""
+	}
+	return path
+}
+
+func newestMarkdown(dirs []string) (string, int64) {
 	var newest string
 	var newestMod int64
 	for _, dir := range dirs {
@@ -279,5 +293,5 @@ func newestMarkdown(dirs []string) string {
 			return nil
 		})
 	}
-	return newest
+	return newest, newestMod
 }

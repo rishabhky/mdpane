@@ -367,11 +367,13 @@ func (m *Model) touchRecent(path string) {
 
 func (m *Model) View() tea.View {
 	var body string
-	switch m.overlay {
-	case overlayRecent:
+	switch {
+	case m.overlay == overlayRecent:
 		body = m.recentOverlay()
-	case overlayHelp:
+	case m.overlay == overlayHelp:
 		body = helpOverlay(m.width, m.height-1)
+	case m.file == "":
+		body = m.waitingScreen()
 	default:
 		body = m.vp.View()
 	}
@@ -422,6 +424,29 @@ func (m *Model) recentOverlay() string {
 		}
 		lines = append(lines, row)
 	}
+	return padLines(lines, m.height-1)
+}
+
+// waitingScreen shows when no fresh markdown exists yet: explains what
+// will happen instead of dredging up some stale file as filler.
+func (m *Model) waitingScreen() string {
+	lines := []string{
+		"",
+		"",
+		"  " + overlayTitle.Render("mdpane") + overlayDim.Render(" — waiting for markdown"),
+		"",
+		"  The pane follows markdown as it is written. When your agent",
+		"  writes a plan, spec, or README, it renders here automatically.",
+		"",
+		"  " + overlayDim.Render("watching:"),
+	}
+	for _, d := range m.cfg.Dirs {
+		lines = append(lines, "    "+overlayDim.Render(prettyPath(d)))
+	}
+	lines = append(lines,
+		"",
+		"  "+overlayDim.Render("or point it somewhere:  mdpane open FILE"),
+	)
 	return padLines(lines, m.height-1)
 }
 
