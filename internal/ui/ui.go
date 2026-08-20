@@ -27,7 +27,6 @@ const (
 )
 
 var (
-	changedBg    = lipgloss.NewStyle().Background(lipgloss.Color("#20303b"))
 	gutterMark   = lipgloss.NewStyle().Foreground(lipgloss.Color("#7ee787"))
 	barStyle     = lipgloss.NewStyle().Background(lipgloss.Color("#1a1b26")).Foreground(lipgloss.Color("#a9b1d6")).Padding(0, 1)
 	barAccent    = lipgloss.NewStyle().Background(lipgloss.Color("#1a1b26")).Foreground(lipgloss.Color("#7ee787")).Bold(true)
@@ -98,12 +97,9 @@ func NewModel(cfg Config, r *render.Renderer, w *watch.Watcher) *Model {
 	m.vp = viewport.New()
 	m.vp.MouseWheelEnabled = true
 	m.vp.FillHeight = true
-	m.vp.StyleLineFunc = func(i int) lipgloss.Style {
-		if _, ok := m.changed[i]; ok {
-			return changedBg
-		}
-		return lipgloss.NewStyle()
-	}
+	// Changed lines get a gutter bar only (GitHub/VS Code style). No
+	// background tint: glamour pads lines to the wrap width, so painting
+	// line backgrounds turns every change into a full-width slab.
 	m.vp.LeftGutterFunc = func(gc viewport.GutterContext) string {
 		if _, ok := m.changed[gc.Index]; ok {
 			return gutterMark.Render(gutterActive)

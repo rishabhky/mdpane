@@ -48,6 +48,13 @@ func Lines(oldRendered, newRendered string) map[int]struct{} {
 			changed[i] = struct{}{}
 		}
 	}
+	// Blank lines carry no information; marking them just adds noise.
+	newLines := strings.Split(newPlain, "\n")
+	for i := range changed {
+		if i < len(newLines) && strings.TrimSpace(newLines[i]) == "" {
+			delete(changed, i)
+		}
+	}
 	return changed
 }
 
