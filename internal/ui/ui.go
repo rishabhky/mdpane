@@ -331,6 +331,9 @@ func (m *Model) switchTo(path, flash string) {
 	m.file = path
 	m.rendered = ""
 	m.clearChanged()
+	// The file may live outside the configured watch dirs (an explicit
+	// `mdpane open`); watch its parent so subsequent edits still stream.
+	_ = m.watcher.AddDirShallow(filepath.Dir(path))
 	m.reload(path, false)
 	m.setFlash(flash)
 	m.following = true
